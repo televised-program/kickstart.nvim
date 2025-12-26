@@ -1,4 +1,5 @@
 --[[
+--
 
 =====================================================================
 ==================== READ THIS BEFORE CONTINUING ====================
@@ -102,7 +103,7 @@ vim.g.have_nerd_font = false
 vim.o.number = true
 -- You can also add relative line numbers, to help with jumping.
 --  Experiment for yourself to see if you like it!
--- vim.o.relativenumber = true
+vim.o.relativenumber = true
 
 -- Enable mouse mode, can be useful for resizing splits for example!
 vim.o.mouse = 'a'
@@ -211,6 +212,15 @@ vim.keymap.set('n', '<C-k>', '<C-w><C-k>', { desc = 'Move focus to the upper win
 -- Highlight when yanking (copying) text
 --  Try it with `yap` in normal mode
 --  See `:help vim.hl.on_yank()`
+
+-- attempt django or liquid
+-- vim.api.nvim_create_autocmd('FileType', {
+--   pattern = 'htmldjango',
+--   callback = function()
+--     vim.bo.filetype = 'html'
+--   end,
+-- })
+
 vim.api.nvim_create_autocmd('TextYankPost', {
   desc = 'Highlight when yanking (copying) text',
   group = vim.api.nvim_create_augroup('kickstart-highlight-yank', { clear = true }),
@@ -284,6 +294,55 @@ require('lazy').setup({
     },
   },
 
+  {
+    'rcarriga/nvim-dap-ui',
+    dependencies = { 'mfussenegger/nvim-dap', 'nvim-neotest/nvim-nio' },
+  -- stylua: ignore
+  keys = {
+    { "<leader>du", function() require("dapui").toggle({ }) end, desc = "Dap [u]i" },
+    { "<leader>de", function() require("dapui").eval() end, desc = "[e]val", mode = {"n", "v"} },
+    { "<leader>dn", function() require("dap").continue({}) end, desc = "[n]ew", mode = {"n", "v"} },
+    { "<leader>dj", function() require("dap").step_into({}) end, desc = "Step into [j]", mode = {"n", "v"} },
+    { "<leader>dk", function() require("dap").step_out({}) end, desc = "Step out [k]", mode = {"n", "v"} },
+    { "<leader>dh", function() require("dap").step_back({}) end, desc = "Step back [h]", mode = {"n", "v"} },
+    { "<leader>dl", function() require("dap").step_over({}) end, desc = "Step over [l]", mode = {"n", "v"} },
+    { "<leader>db", function() require("dap").toggle_breakpoint() end, desc = "[t]oggle breakpoint", mode = {"n", "v"} },
+    { "<leader>dc", function() require("dap").clear_breakpoints() end, desc = "[c]lear breakpoints", mode = {"n", "v"} },
+  },
+    opts = {},
+    config = function(_, opts)
+      local dap = require 'dap'
+      local dapui = require 'dapui'
+      dapui.setup(opts)
+      dap.adapters.codelldb = {
+        type = 'executable',
+        command = 'codelldb', -- or if not in $PATH: "/absolute/path/to/codelldb"
+      }
+      dap.configurations.cpp = {
+        {
+          name = 'Launch file',
+          type = 'codelldb',
+          request = 'launch',
+          program = '${workspaceFolderBasename}',
+          -- program = function()
+          -- return vim.fn.input('Path to executable: ', vim.fn.getcwd() .. '/', 'file')
+          -- end,
+          cwd = '${workspaceFolder}',
+          stopOnEntry = false,
+        },
+      }
+      dap.listeners.after.event_initialized['dapui_config'] = function()
+        dapui.open {}
+      end
+      -- dap.listeners.before.event_terminated['dapui_config'] = function()
+      -- dapui.close {}
+      -- end
+      -- dap.listeners.before.event_exited['dapui_config'] = function()
+      -- dapui.close {}
+      -- end
+    end,
+  },
+
   -- NOTE: Plugins can also be configured to run Lua code when they are loaded.
   --
   -- This is often very useful to both group configuration, as well as handle
@@ -304,7 +363,7 @@ require('lazy').setup({
     opts = {
       -- delay between pressing a key and opening which-key (milliseconds)
       -- this setting is independent of vim.o.timeoutlen
-      delay = 0,
+      delay = 500,
       icons = {
         -- set icon mappings to true if you have a Nerd Font
         mappings = vim.g.have_nerd_font,
@@ -487,7 +546,7 @@ require('lazy').setup({
       'WhoIsSethDaniel/mason-tool-installer.nvim',
 
       -- Useful status updates for LSP.
-      { 'j-hui/fidget.nvim', opts = {} },
+      { 'j-hui/fidget.nvim', version = '*', opts = {} },
 
       -- Allows extra capabilities provided by blink.cmp
       'saghen/blink.cmp',
@@ -522,6 +581,7 @@ require('lazy').setup({
       --    That is to say, every time a new file is opened that is associated with
       --    an lsp (for example, opening `main.rs` is associated with `rust_analyzer`) this
       --    function will be executed to configure the current buffer
+
       vim.api.nvim_create_autocmd('LspAttach', {
         group = vim.api.nvim_create_augroup('kickstart-lsp-attach', { clear = true }),
         callback = function(event)
@@ -698,6 +758,22 @@ require('lazy').setup({
             },
           },
         },
+        pylsp = {
+          settings = {
+            plugins = {
+              ruff = { enabled = true },
+            },
+          },
+        },
+        -- prettier = {
+        --   settings = {
+        --     prepend_args = function()
+        --       return {
+        --         '--single-quote',
+        --       }
+        --     end,
+        --   },
+        -- },
       }
 
       -- Ensure the servers and tools above are installed
@@ -716,6 +792,7 @@ require('lazy').setup({
       local ensure_installed = vim.tbl_keys(servers or {})
       vim.list_extend(ensure_installed, {
         'stylua', -- Used to format Lua code
+        'prettier', -- Used for html
       })
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
@@ -735,7 +812,6 @@ require('lazy').setup({
       }
     end,
   },
-
   { -- Autoformat
     'stevearc/conform.nvim',
     event = { 'BufWritePre' },
@@ -769,10 +845,20 @@ require('lazy').setup({
       formatters_by_ft = {
         lua = { 'stylua' },
         -- Conform can also run multiple formatters sequentially
-        -- python = { "isort", "black" },
+        python = { 'isort', 'black' },
         --
         -- You can use 'stop_after_first' to run the first available formatter from the list
-        -- javascript = { "prettierd", "prettier", stop_after_first = true },
+        javascript = { 'prettier', stop_after_first = true },
+        html = { 'prettier', stop_after_first = true },
+        htmldjango = { 'djlint', 'prettier', stop_after_first = true },
+        liquid = { 'prettier', stop_after_first = true },
+        css = { 'prettier', stop_after_first = true },
+        yml = { 'prettier', stop_after_first = true },
+      },
+      formatters = {
+        djlint = {
+          extra_args = { '--indent', '2' },
+        },
       },
     },
   },
@@ -799,14 +885,19 @@ require('lazy').setup({
           -- `friendly-snippets` contains a variety of premade snippets.
           --    See the README about individual language/framework/plugin snippets:
           --    https://github.com/rafamadriz/friendly-snippets
-          -- {
-          --   'rafamadriz/friendly-snippets',
-          --   config = function()
-          --     require('luasnip.loaders.from_vscode').lazy_load()
-          --   end,
-          -- },
+          {
+            'rafamadriz/friendly-snippets',
+            config = function()
+              require('luasnip.loaders.from_vscode').lazy_load()
+              require('luasnip').filetype_extend('htmldjango', { 'html' })
+            end,
+          },
         },
-        opts = {},
+        opts = {
+          history = true,
+          region_check_events = 'InsertEnter',
+          delete_check_events = 'TextChanged,InsertLeave',
+        },
       },
       'folke/lazydev.nvim',
     },
@@ -956,6 +1047,9 @@ require('lazy').setup({
       },
       indent = { enable = true, disable = { 'ruby' } },
     },
+    { --treesitter swift
+      'alex-pinkus/tree-sitter-swift',
+    },
     -- There are additional nvim-treesitter modules that you can use to interact
     -- with nvim-treesitter. You should go explore a few and see what interests you:
     --
@@ -976,7 +1070,7 @@ require('lazy').setup({
   -- require 'kickstart.plugins.debug',
   -- require 'kickstart.plugins.indent_line',
   -- require 'kickstart.plugins.lint',
-  -- require 'kickstart.plugins.autopairs',
+  require 'kickstart.plugins.autopairs',
   -- require 'kickstart.plugins.neo-tree',
   -- require 'kickstart.plugins.gitsigns', -- adds gitsigns recommend keymaps
 
@@ -984,7 +1078,7 @@ require('lazy').setup({
   --    This is the easiest way to modularize your config.
   --
   --  Uncomment the following line and add your plugins to `lua/custom/plugins/*.lua` to get going.
-  -- { import = 'custom.plugins' },
+  { import = 'custom.plugins' },
   --
   -- For additional information with loading, sourcing and examples see `:help lazy.nvim-🔌-plugin-spec`
   -- Or use telescope!
